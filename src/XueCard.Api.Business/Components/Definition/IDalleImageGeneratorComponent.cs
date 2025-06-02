@@ -2,6 +2,6 @@
 {
     public interface IDalleImageGeneratorComponent
     {
-        Task<Stream> GenerateImageFromChineseTextAsync(string prompt);
+        Task<Stream?> GenerateImageFromChineseTextAsync(string prompt);
     }
 }

@@ -1,22 +1,27 @@
 ﻿using Microsoft.CognitiveServices.Speech;
+using Microsoft.Extensions.Logging;
 using XueCard.Api.Business.Components.Definition;
 
 namespace XueCard.Api.Business.Components.Implementation
 {
-    public class TextToSpeechComponent(SpeechConfig speechConfig) : ITextToSpeechComponent
+    public class TextToSpeechComponent(SpeechConfig speechConfig, ILogger<TextToSpeechComponent> logger) : ITextToSpeechComponent
     {
         private readonly SpeechConfig _speechConfig = speechConfig;
+        private readonly ILogger<TextToSpeechComponent> _logger = logger;
 
 
-        public async Task<Stream> GetAudioSpeechFromText(string text, string voiceName)
+
+        public async Task<Stream?> GetAudioSpeechFromText(string text, string voiceName)
         {
 
-            _speechConfig.SpeechSynthesisVoiceName = voiceName;
-            _speechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3);
+            try
+            {
+                _speechConfig.SpeechSynthesisVoiceName = voiceName;
+                _speechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3);
 
-            using var synthesizer = new SpeechSynthesizer(_speechConfig);
+                using var synthesizer = new SpeechSynthesizer(_speechConfig);
 
-            string ssml = @$"
+                string ssml = @$"
                             <speak version='1.0' xml:lang='zh-CN'>
                               <voice name='{voiceName}'>
                                 <prosody rate='0%' pitch='0%'>
@@ -25,19 +30,26 @@ namespace XueCard.Api.Business.Components.Implementation
                               </voice>
                             </speak>";
 
-            var speechSynthesisResult = await synthesizer.SpeakSsmlAsync(ssml);
+                var speechSynthesisResult = await synthesizer.SpeakSsmlAsync(ssml);
 
-            if (speechSynthesisResult.Reason == ResultReason.SynthesizingAudioCompleted)
-            {
-                MemoryStream stream = new(speechSynthesisResult.AudioData)
+                if (speechSynthesisResult.Reason == ResultReason.SynthesizingAudioCompleted)
                 {
-                    Position = 0
-                };
-                return stream;
-            }
-            else
-                throw new Exception("Unable to Get Audio from Text");
+                    MemoryStream stream = new(speechSynthesisResult.AudioData)
+                    {
+                        Position = 0
+                    };
+                    return stream;
+                }
+                else
+                    throw new Exception("Unable to Get Audio from Text");
 
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "GetAudioSpeechFromText");
+                return null;
+            }
 
         }
     }

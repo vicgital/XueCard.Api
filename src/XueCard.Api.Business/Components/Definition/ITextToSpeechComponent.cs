@@ -3,7 +3,7 @@
     public interface ITextToSpeechComponent
     {
 
-        Task<Stream> GetAudioSpeechFromText(string text, string voiceName);
+        Task<Stream?> GetAudioSpeechFromText(string text, string voiceName);
 
     }
 }

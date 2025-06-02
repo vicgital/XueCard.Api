@@ -20,6 +20,8 @@ namespace XueCard.Api.Business.Infrastructure
                         kv.SetCredential(new DefaultAzureCredential());
                     });
                 })
+                .AddJsonFile($"appsettings.json", optional: false, reloadOnChange: true)
+                .AddEnvironmentVariables()
                 .Build();
 
             return config;

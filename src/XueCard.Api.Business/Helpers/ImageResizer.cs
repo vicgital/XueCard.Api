@@ -7,8 +7,12 @@ namespace XueCard.Api.Business.Helpers
 {
     public static class ImageResizer
     {
-        public static Stream ResizeImage(Stream originalImageStream, int width, int height)
+        public static Stream? ResizeImage(Stream? originalImageStream, int width, int height)
         {
+            if (originalImageStream is null)
+                return null;
+
+
             using var originalImage = Image.FromStream(originalImageStream);
 
             var resizedBitmap = new Bitmap(width, height);

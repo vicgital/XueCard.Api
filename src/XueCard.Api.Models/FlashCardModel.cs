@@ -6,8 +6,8 @@
         public string Chinese { get; set; } = string.Empty;
         public string Pinyin { get; set;} = string.Empty;
         public string English { get; set; } = string.Empty;
-        public string AudioFilePath { get; set; } = string.Empty;
-        public string ImageFilePath { get; set; } = string.Empty;
+        public string AudioName { get; set; } = string.Empty;
+        public string ImageName { get; set; } = string.Empty;
 
     }
 }

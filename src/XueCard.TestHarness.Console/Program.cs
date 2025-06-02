@@ -27,7 +27,9 @@ Console.OutputEncoding = Encoding.Unicode;
 bool stop = false;
 Console.WriteLine("Creating new file directory..");
 var folder = CreateNewFolder();
+string ankiFolder = "C:\\Users\\vic_a\\AppData\\Roaming\\Anki2\\User 1\\collection.media";
 Console.WriteLine($"Folder Created: {folder}");
+
 List<Task> tasks = [];
 
 List<FlashCardModel> flashCards = [];
@@ -59,12 +61,13 @@ while (!stop)
             var speechAudioStream = await textToSpeechComponent.GetAudioSpeechFromText(input, "zh-CN-XiaoxiaoNeural");
             var imageStream = await imageGeneratorComponent.GenerateImageFromChineseTextAsync(translateResult);
             var resizedImage = ImageResizer.ResizeImage(imageStream, 256, 256);
-            (string audoFilePath, string imageFilePath) = await SaveFiles(folder, id, speechAudioStream, resizedImage);
+
+            (string? audioName, string? imageName) = await SaveFiles(folder, ankiFolder, id, speechAudioStream, resizedImage);
             var flashCard = flashCards.FirstOrDefault(e => e.FlashCardId == flashCardId);
             if (flashCard is not null)
             {
-                flashCard.AudioFilePath = audoFilePath;
-                flashCard.ImageFilePath = imageFilePath;
+                flashCard.AudioName = audioName ?? string.Empty;
+                flashCard.ImageName = imageName ?? string.Empty;
             }
         }));
 
@@ -80,10 +83,27 @@ while (!stop)
         stop = true;
 }
 
+Console.WriteLine("Waiting to generate images and audios...");
 Task.WaitAll(tasks);
 
+// Save Flashcards to CSV
+Console.WriteLine("Generating FashCards...");
+var csvStream = FlashCardExporter.GenerateCsvStream(flashCards);
+var csvFilePath = await SaveCsvFile(folder, csvStream);
+Console.WriteLine($"FashCards Path: {csvFilePath}");
 
 
+
+
+
+async Task<string> SaveCsvFile(string folder, Stream csvStream)
+{
+    csvStream.Position = 0; // rewind the stream just in case    
+    var csvFilePath = $"{folder}\\ankiCards.csv";
+    using var csvFileStream = File.Create(csvFilePath);
+    await csvStream.CopyToAsync(csvFileStream);
+    return csvFilePath;
+}
 
 string CreateNewFolder()
 {
@@ -93,24 +113,61 @@ string CreateNewFolder()
     return newDirectory;
 }
 
-async Task<(string, string)> SaveFiles(string folder, Guid guid, Stream audioStream, Stream imageStream)
+async Task<(string?, string?)> SaveFiles(string folder, string ankiCollectionMediaFolder, Guid guid, Stream? audioStream, Stream? imageStream)
 {
-    audioStream.Position = 0; // rewind the stream just in case    
-    imageStream.Position = 0; // rewind the stream just in case    
-    var filesFolder = $"{folder}\\{guid}";
-    System.IO.Directory.CreateDirectory(filesFolder);
+
+    string? audioName = null;
+    string? imageName = null;
 
     // Save Audio
-    var audioFilePath = $"{filesFolder}\\{guid}.mp3";
-    using var audioFileStream = File.Create(audioFilePath);
-    await audioStream.CopyToAsync(audioFileStream);
+    if (audioStream is not null)
+    {
+        try
+        {
+            audioStream.Position = 0; // rewind the stream just in case    
+            audioName = $"{guid}.mp3";
+            var audioFilePath = $"{folder}\\{audioName}";
+            using var audioFileStream = File.Create(audioFilePath);
+            await audioStream.CopyToAsync(audioFileStream);
+
+            // Save file to anki media collection
+            audioStream.Position = 0; // rewind the stream just in case    
+            var ankiAudioFilePath = $"{ankiCollectionMediaFolder}\\{audioName}";
+            using var audioAnkiFileStream = File.Create(ankiAudioFilePath);
+            await audioStream.CopyToAsync(audioAnkiFileStream);
+
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Unable to save audio file");
+        }
+    }
 
     // Save Image
-    var imageFilePath = $"{filesFolder}\\{guid}.png";
-    using var imageFileStream = File.Create(imageFilePath);
-    await imageStream.CopyToAsync(imageFileStream);
+    if (imageStream is not null)
+    {
+        try
+        {
+            imageStream.Position = 0; // rewind the stream just in case    
+            imageName = $"{guid}.png";
+            var imageFilePath = $"{folder}\\{imageName}";
+            using var imageFileStream = File.Create(imageFilePath);
+            await imageStream.CopyToAsync(imageFileStream);
 
-    return (audioFilePath, imageFilePath);
+            // Save file to anki media collection
+            imageStream.Position = 0; // rewind the stream just in case    
+            var ankiImageFilePath = $"{ankiCollectionMediaFolder}\\{imageName}";
+            using var imageAnkiFileStream = File.Create(ankiImageFilePath);
+            await imageStream.CopyToAsync(imageAnkiFileStream);
+
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Unable to save image file");
+        }
+    }
+
+    return (audioName, imageName);
 }
 
 static ServiceCollection ConfigureApp(IConfiguration config)
