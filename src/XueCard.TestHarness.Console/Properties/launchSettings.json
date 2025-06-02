@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "XueCard.TestHarness.Console": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "XUECARD_APP_CONFIG_CNN_STRING": "Endpoint=https://app-config-xuecard.azconfig.io;Id=7neP;Secret=7qhMlK7z0GTz8KgDXaJQEzupN1iTkZVstZzEnnE4XvdomJguDfrIJQQJ99BFACLArgHhg60xAAACAZAC42Vl"
+      }
+    }
+  }
+}
