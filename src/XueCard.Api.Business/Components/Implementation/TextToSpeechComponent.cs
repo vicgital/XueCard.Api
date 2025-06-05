@@ -11,7 +11,7 @@ namespace XueCard.Api.Business.Components.Implementation
 
 
 
-        public async Task<Stream?> GetAudioSpeechFromText(string text, string voiceName)
+        public async Task<Stream?> GetAudioSpeechFromText(string text, string languageCode, string voiceName, string audioProsodyRate)
         {
 
             try
@@ -22,9 +22,9 @@ namespace XueCard.Api.Business.Components.Implementation
                 using var synthesizer = new SpeechSynthesizer(_speechConfig);
 
                 string ssml = @$"
-                            <speak version='1.0' xml:lang='zh-CN'>
+                            <speak version='1.0' xml:lang='{languageCode}'>
                               <voice name='{voiceName}'>
-                                <prosody rate='0%' pitch='0%'>
+                                <prosody rate='{audioProsodyRate}' pitch='0%'>
                                   {text}
                                 </prosody>
                               </voice>

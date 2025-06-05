@@ -26,6 +26,5 @@ namespace XueCard.Api.Business.Infrastructure
 
             return config;
         }
-
     }
 }

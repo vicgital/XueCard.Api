@@ -14,25 +14,94 @@ using XueCard.Api.Business.Infrastructure.Definition;
 using XueCard.Api.Business.Infrastructure.Implementation;
 using XueCard.Api.Models;
 
+
+#region Setup
+Console.InputEncoding = Encoding.Unicode;
+Console.OutputEncoding = Encoding.Unicode;
 var config = AppConfigurationFactory.GetAppConfigurationFromConnectionString();
 var services = ConfigureApp(config);
 var provider = services.BuildServiceProvider();
-
-var translatorComponent = provider.GetRequiredService<ITranslatorComponent>();
-var textToSpeechComponent = provider.GetRequiredService<ITextToSpeechComponent>();
-var imageGeneratorComponent = provider.GetRequiredService<IDalleImageGeneratorComponent>();
-Console.InputEncoding = Encoding.Unicode;
-Console.OutputEncoding = Encoding.Unicode;
-
-bool stop = false;
 Console.WriteLine("Creating new file directory..");
 var folder = CreateNewFolder();
-string ankiFolder = "C:\\Users\\vic_a\\AppData\\Roaming\\Anki2\\User 1\\collection.media";
 Console.WriteLine($"Folder Created: {folder}");
 
-List<Task> tasks = [];
+var _translatorComponent = provider.GetRequiredService<ITranslatorComponent>();
+var _textToSpeechComponent = provider.GetRequiredService<ITextToSpeechComponent>();
+var _imageGeneratorComponent = provider.GetRequiredService<IDalleImageGeneratorComponent>();
 
+static ServiceCollection ConfigureApp(IConfiguration config)
+{
+    ServiceCollection services = new();
+    services.AddSingleton<IConfiguration>(config);
+    services.AddSingleton<TextTranslationClient>(AzureClientFactory.GetTextTranslationClient(config));
+    services.AddSingleton<SpeechConfig>(AzureClientFactory.GetSpeechSynthesizerConfig(config));
+    services.AddSingleton<ImageClient>(AzureClientFactory.GetOpenAIImageClient(config));
+    services.AddSingleton<IAppConfiguration, AppConfiguration>();
+    services.AddSingleton<ITextToSpeechComponent, TextToSpeechComponent>();
+    services.AddSingleton<ITranslatorComponent, TranslatorComponent>();
+    services.AddSingleton<IDalleImageGeneratorComponent, DalleImageGeneratorComponent>();
+
+    services.AddSerilogLogging(config);
+
+    return services;
+
+}
+
+#endregion
+
+#region Variable Initialization
+string ankiFolder = "C:\\Users\\vic_a\\AppData\\Roaming\\Anki2\\User 1\\collection.media";
+string translateToLanguage = "en";
+string translateFromLanguage = "zh-Hans";
+string transliterateScriptCode = "Hans";
+string audioVoiceName = "zh-CN-YunxiNeural";
+string audioLanguage = "zh-CN";
+string audioProsodyRate = "slow"; // slow, medium, fast
+bool enableImageCreation = false;
+#endregion
+
+
+
+
+bool stop = false;
+List<Task> tasks = [];
 List<FlashCardModel> flashCards = [];
+
+#region User Customization
+
+// ---- Create Image ? -------
+Console.Write("Create Image? (Y/N): ");
+var userEnabledImage = Console.ReadLine();
+enableImageCreation = !string.IsNullOrEmpty(userEnabledImage) && userEnabledImage.Equals("y", StringComparison.InvariantCultureIgnoreCase);
+
+// ---- Choose Voice -------
+Console.WriteLine("Chinese Voices");
+Console.WriteLine("1. zh-CN-YunxiNeural");
+Console.WriteLine("2. zh-CN-XiaoxiaoNeural");
+Console.WriteLine("3. zh-CN-YunjianNeural");
+Console.WriteLine("4. zh-CN-YunyangNeural");
+Console.Write("Choose Chinese Voice (Default is zh-CN-YunxiNeural):");
+switch (Console.ReadLine())
+{
+    case "1":
+        audioVoiceName = "zh-CN-YunxiNeural";
+        break;
+    case "2":
+        audioVoiceName = "zh-CN-XiaoxiaoNeural";
+        break;
+    case "3":
+        audioVoiceName = "zh-CN-YunjianNeural";
+        break;
+    case "4":
+        audioVoiceName = "zh-CN-YunyangNeural";
+        break;
+    default:
+        break;
+}
+#endregion
+
+
+#region Start Workflow
 
 while (!stop)
 {
@@ -45,8 +114,8 @@ while (!stop)
             break;
         }
         var id = Guid.NewGuid();
-        var translateResult = await translatorComponent.TranslateText(input, "en", "zh-Hans");
-        var transliterateResult = await translatorComponent.TransliterateText(input, "zh-Hans", "Hans");
+        var translateResult = await _translatorComponent.TranslateText(input, translateToLanguage, translateFromLanguage);
+        var transliterateResult = await _translatorComponent.TransliterateText(input, translateFromLanguage, transliterateScriptCode);
         flashCards.Add(new FlashCardModel
         {
             FlashCardId = id,
@@ -58,8 +127,8 @@ while (!stop)
         tasks.Add(Task.Run(async () =>
         {
             var flashCardId = id;
-            var speechAudioStream = await textToSpeechComponent.GetAudioSpeechFromText(input, "zh-CN-XiaoxiaoNeural");
-            var imageStream = await imageGeneratorComponent.GenerateImageFromChineseTextAsync(translateResult);
+            var speechAudioStream = await _textToSpeechComponent.GetAudioSpeechFromText(input, audioLanguage, audioVoiceName, audioProsodyRate);
+            var imageStream = enableImageCreation ? await _imageGeneratorComponent.GenerateImageFromChineseTextAsync(translateResult) : null;
             var resizedImage = ImageResizer.ResizeImage(imageStream, 256, 256);
 
             (string? audioName, string? imageName) = await SaveFiles(folder, ankiFolder, id, speechAudioStream, resizedImage);
@@ -83,6 +152,11 @@ while (!stop)
         stop = true;
 }
 
+
+#endregion 
+
+#region Generate Files
+
 Console.WriteLine("Waiting to generate images and audios...");
 Task.WaitAll(tasks);
 
@@ -92,9 +166,9 @@ var csvStream = FlashCardExporter.GenerateCsvStream(flashCards);
 var csvFilePath = await SaveCsvFile(folder, csvStream);
 Console.WriteLine($"FashCards Path: {csvFilePath}");
 
+#endregion
 
-
-
+#region Helper Methods
 
 async Task<string> SaveCsvFile(string folder, Stream csvStream)
 {
@@ -170,20 +244,7 @@ async Task<(string?, string?)> SaveFiles(string folder, string ankiCollectionMed
     return (audioName, imageName);
 }
 
-static ServiceCollection ConfigureApp(IConfiguration config)
-{
-    ServiceCollection services = new();
-    services.AddSingleton<IConfiguration>(config);
-    services.AddSingleton<TextTranslationClient>(AzureClientFactory.GetTextTranslationClient(config));
-    services.AddSingleton<SpeechConfig>(AzureClientFactory.GetSpeechSynthesizerConfig(config));
-    services.AddSingleton<ImageClient>(AzureClientFactory.GetOpenAIImageClient(config));
-    services.AddSingleton<IAppConfiguration, AppConfiguration>();
-    services.AddSingleton<ITextToSpeechComponent, TextToSpeechComponent>();
-    services.AddSingleton<ITranslatorComponent, TranslatorComponent>();
-    services.AddSingleton<IDalleImageGeneratorComponent, DalleImageGeneratorComponent>();
+#endregion
 
-    services.AddSerilogLogging(config);
 
-    return services;
 
-}

@@ -17,9 +17,7 @@ namespace XueCard.Api.Business.AzureClients
             var region = config[AppConfigurationKeyNames.XUECARD_AI_SERVICES_REGION] ?? throw new ArgumentNullException($"{AppConfigurationKeyNames.XUECARD_AI_SERVICES_REGION} not found"); ;
             AzureKeyCredential credential = new(key);
             TextTranslationClient client = new(credential, region);
-
             return client;
-
         }
 
         public static SpeechConfig GetSpeechSynthesizerConfig(IConfiguration config)
