@@ -11,7 +11,7 @@ namespace XueCard.Api.Business.Helpers
             var streamWriter = new StreamWriter(memoryStream, Encoding.UTF8);
 
             // Write header
-            streamWriter.WriteLine("Chinese|Pinyin|English|Audio|Image");
+            //streamWriter.WriteLine("Chinese|Pinyin|English|Audio|Image");
 
             // Write rows
             foreach (var card in flashCards)
@@ -20,8 +20,8 @@ namespace XueCard.Api.Business.Helpers
                     card.Chinese,
                     card.Pinyin,
                     card.English,
-                    $"[sound:{card.AudioName}]",
-                    $"<img src=\"{card.ImageName}\">"
+                    (string.IsNullOrEmpty(card.AudioName) ? "" : $"[sound:{card.AudioName}]"),
+                    (string.IsNullOrEmpty(card.ImageName) ? "" : $"<img src=\"{card.ImageName}\">")
                 );
 
                 streamWriter.WriteLine(line);

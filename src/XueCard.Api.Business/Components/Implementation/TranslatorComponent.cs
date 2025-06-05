@@ -46,8 +46,8 @@ namespace XueCard.Api.Business.Components.Implementation
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "TranslateText()");
-                throw;
+                _logger.LogError(ex, "TranslateText({text})", text);
+                return string.Empty;
             }
         }
 
@@ -62,16 +62,16 @@ namespace XueCard.Api.Business.Components.Implementation
                 var transliteratorResult = await _client.TransliterateAsync(options);
                 var result = transliteratorResult.Value;
 
-                var translatedText = result.FirstOrDefault();
+                var translatedText = result[0];
                 if (translatedText is not null)
                     return translatedText.Text;
                 else
-                    return "";
+                    return string.Empty; 
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "TransliterateText()");
-                throw;
+                return string.Empty;
             }
         }
 

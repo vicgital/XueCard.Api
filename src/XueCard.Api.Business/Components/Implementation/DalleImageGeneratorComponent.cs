@@ -30,7 +30,7 @@ namespace XueCard.Api.Business.Components.Implementation
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "GenerateImageFromChineseTextAsync()");
+                _logger.LogError(ex, "GenerateImageFromChineseTextAsync({prompt})", prompt);
                 return null;
             }
 

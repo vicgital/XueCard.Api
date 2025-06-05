@@ -40,7 +40,6 @@ static ServiceCollection ConfigureApp(IConfiguration config)
     services.AddSingleton<ITextToSpeechComponent, TextToSpeechComponent>();
     services.AddSingleton<ITranslatorComponent, TranslatorComponent>();
     services.AddSingleton<IDalleImageGeneratorComponent, DalleImageGeneratorComponent>();
-
     services.AddSerilogLogging(config);
 
     return services;
@@ -64,7 +63,6 @@ bool enableImageCreation = false;
 
 
 bool stop = false;
-List<Task> tasks = [];
 List<FlashCardModel> flashCards = [];
 
 #region User Customization
@@ -105,7 +103,7 @@ switch (Console.ReadLine())
 
 while (!stop)
 {
-    Console.WriteLine("Enter chinese character or type 'stop': ");
+    Console.Write("Enter chinese character or type 'stop': ");
     var input = Console.ReadLine();
     if (input is not null)
     {
@@ -114,38 +112,28 @@ while (!stop)
             break;
         }
         var id = Guid.NewGuid();
-        var translateResult = await _translatorComponent.TranslateText(input, translateToLanguage, translateFromLanguage);
-        var transliterateResult = await _translatorComponent.TransliterateText(input, translateFromLanguage, transliterateScriptCode);
-        flashCards.Add(new FlashCardModel
+        var translateTask = _translatorComponent.TranslateText(input, translateToLanguage, translateFromLanguage);
+        var transliterateTask = _translatorComponent.TransliterateText(input, translateFromLanguage, transliterateScriptCode);
+        var speechAudioTask = _textToSpeechComponent.GetAudioSpeechFromText(input, audioLanguage, audioVoiceName, audioProsodyRate);
+        Task.WaitAll(translateTask, transliterateTask, speechAudioTask);
+
+        var newFlashCard = new FlashCardModel
         {
             FlashCardId = id,
             Chinese = input,
-            English = translateResult,
-            Pinyin = transliterateResult
-        });
+            English = await translateTask,
+            Pinyin = await transliterateTask,
+        };
 
-        tasks.Add(Task.Run(async () =>
-        {
-            var flashCardId = id;
-            var speechAudioStream = await _textToSpeechComponent.GetAudioSpeechFromText(input, audioLanguage, audioVoiceName, audioProsodyRate);
-            var imageStream = enableImageCreation ? await _imageGeneratorComponent.GenerateImageFromChineseTextAsync(translateResult) : null;
-            var resizedImage = ImageResizer.ResizeImage(imageStream, 256, 256);
-
-            (string? audioName, string? imageName) = await SaveFiles(folder, ankiFolder, id, speechAudioStream, resizedImage);
-            var flashCard = flashCards.FirstOrDefault(e => e.FlashCardId == flashCardId);
-            if (flashCard is not null)
-            {
-                flashCard.AudioName = audioName ?? string.Empty;
-                flashCard.ImageName = imageName ?? string.Empty;
-            }
-        }));
-
-
+        var speechAudio = await speechAudioTask;
+        newFlashCard.AudioName = await SaveAudioFile(folder, ankiFolder, id, speechAudio) ?? string.Empty;        
+        flashCards.Add(newFlashCard);
 
         Console.WriteLine($"--------RESULT--------");
-        Console.WriteLine($"Chinese: {input}");
-        Console.WriteLine($"Pinyin: {transliterateResult}");
-        Console.WriteLine($"English: {translateResult}");
+        Console.WriteLine($"Chinese: {newFlashCard.Chinese}");
+        Console.WriteLine($"Pinyin: {newFlashCard.Pinyin}");
+        Console.WriteLine($"English: {newFlashCard.English}");
+        Console.WriteLine($"Audio Name: {newFlashCard.AudioName}");
         Console.WriteLine($"----------------------");
     }
     else
@@ -153,12 +141,16 @@ while (!stop)
 }
 
 
-#endregion 
+
+
+#endregion
 
 #region Generate Files
-
-Console.WriteLine("Waiting to generate images and audios...");
-Task.WaitAll(tasks);
+if (enableImageCreation)
+{
+    Console.WriteLine("Waiting to generate images...");
+    await GenerateImages(flashCards);
+}
 
 // Save Flashcards to CSV
 Console.WriteLine("Generating FashCards...");
@@ -169,6 +161,20 @@ Console.WriteLine($"FashCards Path: {csvFilePath}");
 #endregion
 
 #region Helper Methods
+
+async Task GenerateImages(List<FlashCardModel> flashCards)
+{
+    var totalFlashCards = flashCards.Count;
+    var count = 0;
+    Console.WriteLine($"Total Flashcards: {totalFlashCards}");
+    foreach (FlashCardModel card in flashCards)
+    {
+        Console.WriteLine($"Creating Image {count}/{totalFlashCards}...");
+        var imageStream = enableImageCreation ? await _imageGeneratorComponent.GenerateImageFromChineseTextAsync(card.English) : null;
+        var resizedImage = ImageResizer.ResizeImage(imageStream, 256, 256);
+        card.ImageName = await SaveImageFile(folder, ankiFolder, card.FlashCardId, resizedImage) ?? string.Empty;
+    }
+}
 
 async Task<string> SaveCsvFile(string folder, Stream csvStream)
 {
@@ -187,26 +193,23 @@ string CreateNewFolder()
     return newDirectory;
 }
 
-async Task<(string?, string?)> SaveFiles(string folder, string ankiCollectionMediaFolder, Guid guid, Stream? audioStream, Stream? imageStream)
+async Task<string?> SaveAudioFile(string folder, string ankiFolder, Guid id, Stream? audioStream)
 {
-
     string? audioName = null;
-    string? imageName = null;
-
     // Save Audio
     if (audioStream is not null)
     {
         try
         {
             audioStream.Position = 0; // rewind the stream just in case    
-            audioName = $"{guid}.mp3";
+            audioName = $"{id}.mp3";
             var audioFilePath = $"{folder}\\{audioName}";
             using var audioFileStream = File.Create(audioFilePath);
             await audioStream.CopyToAsync(audioFileStream);
 
             // Save file to anki media collection
             audioStream.Position = 0; // rewind the stream just in case    
-            var ankiAudioFilePath = $"{ankiCollectionMediaFolder}\\{audioName}";
+            var ankiAudioFilePath = $"{ankiFolder}\\{audioName}";
             using var audioAnkiFileStream = File.Create(ankiAudioFilePath);
             await audioStream.CopyToAsync(audioAnkiFileStream);
 
@@ -216,6 +219,13 @@ async Task<(string?, string?)> SaveFiles(string folder, string ankiCollectionMed
             Serilog.Log.Error(ex, "Unable to save audio file");
         }
     }
+
+    return audioName;
+}
+
+async Task<string?> SaveImageFile(string folder, string ankiCollectionMediaFolder, Guid guid, Stream? imageStream)
+{
+    string? imageName = null;
 
     // Save Image
     if (imageStream is not null)
@@ -241,7 +251,7 @@ async Task<(string?, string?)> SaveFiles(string folder, string ankiCollectionMed
         }
     }
 
-    return (audioName, imageName);
+    return imageName;
 }
 
 #endregion
