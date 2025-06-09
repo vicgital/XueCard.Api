@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Text;
 using Azure.AI.Translation.Text;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.Extensions.Configuration;
@@ -167,12 +169,22 @@ async Task GenerateImages(List<FlashCardModel> flashCards)
     var totalFlashCards = flashCards.Count;
     var count = 0;
     Console.WriteLine($"Total Flashcards: {totalFlashCards}");
+    Stopwatch sw = new();
+    sw.Start();
     foreach (FlashCardModel card in flashCards)
     {
         Console.WriteLine($"Creating Image {count}/{totalFlashCards}...");
         var imageStream = enableImageCreation ? await _imageGeneratorComponent.GenerateImageFromChineseTextAsync(card.English) : null;
         var resizedImage = ImageResizer.ResizeImage(imageStream, 256, 256);
         card.ImageName = await SaveImageFile(folder, ankiFolder, card.FlashCardId, resizedImage) ?? string.Empty;
+        count++;
+
+        if (count > 5 && count < totalFlashCards && sw.ElapsedMilliseconds < 60000)
+        {
+            Console.WriteLine("Waiting a minute to not exceed the image generation quota...");
+            await Task.Delay(60000);
+            sw.Restart();
+        }
     }
 }
 
